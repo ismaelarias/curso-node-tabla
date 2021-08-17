@@ -6,6 +6,7 @@ const argv = require('yargs')
         describe: 'es la base de la tabla de multiplicar'
     })
     .option('l',{
+        
         alias:'listar',
         type: 'boolean',
         describe: 'muestra la tabla en consola'
