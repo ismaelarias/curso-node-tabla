@@ -1,4 +1,4 @@
-# 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Notas:
+# Notas:
 Este es mi primer programa en node
 
 ``` 
