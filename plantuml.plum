@@ -1,0 +1,396 @@
+@startuml
+'skinparam ConditionStyle diamond
+'skinparam ConditionEndStyle hline
+!$transaccion=B415
+!$service=Accounts
+!$gitservice=midd/accounts
+!$version=1.0.0
+!$meta=ReporteSaldoCuenta
+legend top left
+|=Service|$service|
+|=Transacción | $transaccion |
+|=Meta|$meta|
+|=Git Repo|$gitservice|
+end legend
+
+|#AntiqueWhite|MIDD|=Appflow/Midd/$service
+'|#AntiqueWhite|TNC|=Appflow/Midd/TNConnector
+'|#AntiqueWhite|ALT|=Appflow/Altamira/$service
+|#Orange|LOCAL|=Local
+'|#MintCream|TRF|=midd/tnconnector-trf
+|#MintCream|GIT|=$gitservice
+'!include ./workflow_common.puml
+!procedure $merge($source,$target)
+  :Crear Merge Request $source -> $target;
+  :Code Review;
+  :Approve;
+  :Merge a $target;
+!endprocedure
+
+|MIDD|
+start
+:Crear **MIDD/Midd/$service**;
+:Crear **MIDD/Midd/$service/$meta**;
+:== Proyectar Midd/TNConnector a Midd/Midd/$service
+===Proyectar **$transaccion** en **$meta**
+* $transaccion##Input -> $meta##Input
+* $transaccion##Output -> $meta##Output
+;
+group Modelar Entidades
+
+ :Proyectar atributos de **ALTAMIRA/$transaccion##Input** en **MIDD/$meta##Input**;
+ note
+  * Tipo de atributo: **Atributo de otra entidad**
+  * Adapter: **Middleware Adapter**
+  * Entidad Base: **MIDD-%upper($transaccion)Input**
+ end note
+
+ :Proyectar atributos de **ALTAMIRA/$transaccion##General** en **MIDD/$meta##General**;
+ note
+  * Tipo de atributo: **Atributo de otra entidad**
+  * Adapter: **Middleware Adapter**
+  * Entidad Base: **MIDD-%upper($transaccion)General**
+ end note
+
+ :Modelar **MIDD/$transaccion##Output** como una lista de **MIDD/$meta##General**;
+ note
+  * Tipo: **%lower($meta)General []**
+  * Nombre **%lower($meta)Generals**
+  * Nombre Legacy: general
+  * Tipo de atributo: **Otra entidad**
+  * Entidad Base: **MIDD-%upper($transaccion)General**
+ end note
+
+end group
+
+group Modelar Operación
+
+ floating note
+  =Nota
+  # Establecer Entidad de entrada: **MIDD/$meta##Input**
+  # Establecer Entidad de salida: **MIDD/$meta##Output**
+ end note
+ :Crear la operación MIDD/Midd/$service/**$meta**;
+ :Referenciar la operación **ALTAMIRA/$service/$transaccion**;
+
+end group
+group SNAPSHOT
+ :generateStub;
+ :generateMSClients;
+end group
+end
+
+
+|LOCAL|
+start
+:Crear Feature Branch desde DEV;
+note
+=<&info>Importante:
+Si hay cambios en MASTER que no están
+en DEV, REINTEGRAR!
+end note
+:Cambiar pom.xml a (**-SNAPSHOT**);
+note
+=<&info>Atención:
+Actualizar el **artifact.version**
+y además **los clients**
+end note
+:Implementar **Tests**;
+note
+=<&info>Ajustar config:
+src/test/resources/config.xml
+end note
+:Implementar **código productivo**;
+:Pushear Feature Branch;
+
+ |GIT|
+ repeat
+  repeat
+   repeat
+    :Corregir implementación;
+    $merge("FEAT","DEV")
+    :Deploy DEV;
+    |LOCAL|
+    repeat
+     :Verificar;
+     note
+      Impactar
+      **https://midd-%lower($service)-X-X-dev.apps.ocp4-tst.intranet.local/%lower($service)/X.X/%lower($meta)**
+      (con los datos provistos, con postman);
+     end note
+     backward:=fix/retry pipeline;
+    repeat while(problemas con el despliegue?) is(error) not(OK!)
+   repeat while(Dev Test Pass?) is (NO);
+   |MIDD|
+    :Release;
+    end
+
+|LOCAL|
+start
+:Crear Feature Branch desde DEV;
+note
+=<&info>Importante:
+Si hay cambios en MASTER que no están
+en DEV, REINTEGRAR!
+end note
+:Cambiar pom.xml **QUITAR** (**-SNAPSHOT**);
+note
+=<&info>Atención:
+Actualizar el **artifact.version**
+y además **los clients**
+end note
+
+:Pushear Feature Branch;
+   |GIT|
+    $merge("RELEASE","DEV")
+    :Deploy DEV
+    (solo para mantener los ambientes consistentes);
+    :=Deploy FBD;
+     note right
+     Notar que si solo se actualiza el pom.xml para
+     quitar el "-SNAPSHOT", entonces no hace falta
+     repetir pruebas en DEV
+     end note
+    |LOCAL|
+    repeat
+     :Verificar;
+     note
+      ==Verificar:
+      el correcto funcionamiento
+      del MS respecto del Legacy;
+      ===Realizar pruebas integradas
+     end note
+     backward:=fix/retry pipeline;
+    repeat while(problemas con el despliegue?) is(error) not(OK!)
+  repeat while(=FBD Test Pass?) is (NO)
+  |GIT|
+  $merge("DEV","MASTER")
+  :Taggear -relese;
+  :Deploy QAT;
+ repeat while(QAT Test Pass?) is (NO);
+ :Deploy PRD;
+|GIT|
+ if(Test en PRD) then (fail)
+  :Rollback;
+  end
+ else (OK!)
+ :Enjoy PRD!!!;
+ detach
+ endif
+@enduml
+@startuml
+'skinparam ConditionStyle diamond
+'skinparam ConditionEndStyle hline
+!$transaccion=B415
+!$service=Accounts
+!$gitservice=midd/accounts
+!$version=1.0.0
+!$meta=ReporteSaldoCuenta
+legend top left
+|=Service|$service|
+|=Transacción | $transaccion |
+|=Meta|$meta|
+|=Git Repo|$gitservice|
+endlegend
+
+'|#AntiqueWhite|MIDD|=Appflow/Midd/$service
+|#AntiqueWhite|TNC|=Appflow/Midd/TNConnector
+|#MintCream|TRF|=midd/tnconnector-trf
+|#AntiqueWhite|ALT|=Appflow/Altamira/$service
+|#Orange|LOCAL|=Local
+'|#MintCream|GIT|=$gitservice
+'!include ./workflow_common.puml
+|ALT|
+start
+floating note
+=Parámetros:
+|= tx ALTAMIRA | $transaccion|
+|= servicio    | $service    |
+|= meta        | $meta       |
+end note
+note
+ =Requisitos
+ # Conocer el protocolo (Altamira PS10 over **TELNET/SNA**)
+end note
+group Modos de ejecucion
+ note
+  =Requisitos
+  # Todo esto debe estar completamente
+   detallado en el **documento de especificación**.
+  # Conformidad de los analistas que consumirán el servicio,
+   porque **dejará de ser compatible** con la versión legacy
+   (antes había un único servicio legacy y ahora N operaciones)
+ end note
+ if(múltiples modos de ejecución?) then(si)
+  repeat
+   :Generar el servicio correspondiente
+    Utilizando el concepto de **ALIAS**
+    en **ALTAMIRA/ALTAMIRA/$service**.
+   ;
+   :Adjuntar en la **tarjeta JIRA** correspondiente;
+  repeat while(Restan modos de ejecución sin alias generado?) is(siguiente sin alias) not(todos los alias generados)
+ else(no)
+ :Crear el servicio **ALTAMIRA/ALTAMIRA/$service**;
+ endif
+end group
+
+group Modelar Entidades
+ floating note
+  =Requisitos
+  # Especificación de atributos de entrada y salida
+  ## Nombre Legacy
+  # Según tipo de delimitación:
+  ## Delimitado
+  ### **Delimitador de campo**
+  ### **Longitud de campo**
+  ## tabular
+  ### **Offset de campo**
+  ### **Longitud de campo**
+  ### **Número de línea**
+
+  =Atención a:
+  * Tipo: **Atributo Propio**
+  * **Nombre Legacy** debe ser igual a **Nombre**
+ end note
+
+ |ALT|
+ :Crear Entidad **ALTAMIRA/$transaccion##Input**;
+ :Crear Entidad **ALTAMIRA/$transaccion##Output**;
+
+end group
+group Modelar Operación $transaccion
+ floating note
+  =Nota
+  # Establecer Entidad de entrada: **ALTAMIRA/$transaccion##Input**
+  # Establecer Entidad de salida: **ALTAMIRA/$transaccion##Output**
+ end note
+ :Crear la operación ALTAMIRA/ALTAMIRA/$service/**$transaccion**?;
+end group
+end
+|TNC|
+
+start
+:Crear el servicio MIDD/TNConnector/**$service**;
+
+group Modelar Entidades
+
+ :Proyectar atributos de **ALTAMIRA/$transaccion##Input** en **MIDD/$transaccion##Input**;
+ note
+  * Tipo de atributo: **Atributo de otra entidad**
+  * Adapter: **Middleware Adapter**
+  * Entidad Base: **MIDD-%upper($transaccion)Input**
+ end note
+
+ :Proyectar atributos de **ALTAMIRA/$transaccion##General** en **MIDD/$transaccion##General**;
+ note
+  * Tipo de atributo: **Atributo de otra entidad**
+  * Adapter: **Middleware Adapter**
+  * Entidad Base: **MIDD-%upper($transaccion)General**
+ end note
+
+ :Modelar **MIDD/$transaccion##Output** como una lista de **MIDD/$transaccion##General**;
+ note
+  * Tipo: **%lower($transaccion)General []**
+  * Nombre **%lower($transaccion)Generals**
+  * Nombre Legacy: general
+  * Tipo de atributo: **Otra entidad**
+  * Entidad Base: **MIDD-%upper($transaccion)General**
+ end note
+
+end group
+
+group Modelar Operación
+
+ floating note
+  =Nota
+  # Establecer Entidad de entrada: **MIDD/$transaccion##Input**
+  # Establecer Entidad de salida: **MIDD/$transaccion##Output**
+ end note
+ :Crear la operación MIDD/TNConnector/$service/**$transaccion**;
+
+end group
+end
+
+|ALT|
+start
+repeat
+ if(Requiere cambiar el contrato de ALTAMIRA/$service?) then(si)
+  #yellow:Correcciones en entidades;
+  note #yellow
+   =<:warning:>Validar con el analista del host
+   los cambios pueden romper dependencias
+  end note
+ else(no)
+ endif
+
+ |TNC|
+ if(Requiere modificar Proyecciones?) then(si)
+  #palegreen:<b>Intervenir en las proyecciones;
+  note
+   <:point_up:>:solo agregar o quitar atributos proyectados
+  end note
+ else(no)
+ endif
+
+
+ :Descargar TRF (**$transaccion##.json**);
+
+ |LOCAL|
+ :Verificar TRF
+ con TNConnector local;
+ floating note
+  =Config para ejecutar LocalTest:
+  # Obtener y apuntar configs de seguridad
+  en **src/test/resources/local_config.properties**
+  (SecurityPath=/sistemas/middleware/TNConnector/config/security)
+  # Configurar el RACDXX que corresponda
+  en **src/test/resources/config.xml**
+  en (**conf/TNConnector/DBPool/URL**)
+  * desactivar Kafka cambiando la key **monit**
+  por **monit_NO_ME_MIRES**
+
+ end note
+ note
+  =Ejecución:
+  # Impactar http://localhost::8082
+  con el request de la especificación de las pruebas
+  # Verificar que el response corresponde a lo especificado
+ end note
+repeat while(=Responde según la especificación?) is (no) not(=si)
+|TNC|
+:=Crear TNConnector TRF
+(a nivel servicio);
+note
+Notar que se listan los MRs **"opened"**
+para cada servicio afectado por los cambios.
+end note
+
+-> publica en **midd/TNConnector-trf**
+**Merge branch 'feature-%lower($service)-#######' into 'dev'**
+;
+
+|TRF|
+:=Approve Merge Request;
+:== Deploy en DEV;
+:Release tag;
+:== Deploy en QAT;
+:Approve;
+:== Deploy en PRD;
+
+note
+ =Notar que
+ solo pueden haber problemas
+ de despliegue, problemas con el modelo
+ se resolvieron antes.
+end note
+
+|LOCAL|
+repeat
+ :=Verificar postman to http://... (TCNConnector-dev)
+ (con los datos provistos, con postman);
+ backward:=fix/retry pipeline;
+repeat while(problemas con el despliegue?) is(error) not(ok!)
+
+end
+
+@enduml
